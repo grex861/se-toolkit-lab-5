@@ -6,15 +6,15 @@ populated by the ETL pipeline. All endpoints require a `lab` query
 parameter to filter results by lab (e.g., "lab-01").
 """
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy import case, func, select
-from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.database import get_session
 from app.models.item import ItemRecord
 from app.models.interaction import InteractionLog
 from app.models.learner import Learner
+from app.auth import get_api_key  # ✅ ИМПОРТ АУТЕНТИФИКАЦИИ
 
 router = APIRouter()
 
@@ -49,6 +49,7 @@ async def get_lab_tasks(session: AsyncSession, lab: str):
 @router.get("/scores")
 async def get_scores(
     lab: str = Query(..., description="Lab identifier, e.g. 'lab-01'"),
+    _api_key: str = Depends(get_api_key),  # ✅ АУТЕНТИФИКАЦИЯ
     session: AsyncSession = Depends(get_session),
 ):
     """Score distribution histogram for a given lab."""
@@ -63,7 +64,6 @@ async def get_scores(
             {"bucket": "76-100", "count": 0},
         ]
     
-    # Single query with buckets
     bucket_case = case(
         (InteractionLog.score <= 25, "0-25"),
         (InteractionLog.score <= 50, "26-50"),
@@ -98,6 +98,7 @@ async def get_scores(
 @router.get("/pass-rates")
 async def get_pass_rates(
     lab: str = Query(..., description="Lab identifier, e.g. 'lab-01'"),
+    _api_key: str = Depends(get_api_key),  # ✅ АУТЕНТИФИКАЦИЯ
     session: AsyncSession = Depends(get_session),
 ):
     """Per-task pass rates for a given lab."""
@@ -108,7 +109,6 @@ async def get_pass_rates(
     
     task_ids = [task.id for task in tasks]
     
-    # SINGLE query for ALL tasks (fixes N+1 problem)
     stats_stmt = select(
         InteractionLog.item_id,
         func.avg(InteractionLog.score).label("avg_score"),
@@ -134,6 +134,7 @@ async def get_pass_rates(
 @router.get("/timeline")
 async def get_timeline(
     lab: str = Query(..., description="Lab identifier, e.g. 'lab-01'"),
+    _api_key: str = Depends(get_api_key),  # ✅ АУТЕНТИФИКАЦИЯ
     session: AsyncSession = Depends(get_session),
 ):
     """Submissions per day for a given lab."""
@@ -163,6 +164,7 @@ async def get_timeline(
 @router.get("/groups")
 async def get_groups(
     lab: str = Query(..., description="Lab identifier, e.g. 'lab-01'"),
+    _api_key: str = Depends(get_api_key),  # ✅ АУТЕНТИФИКАЦИЯ
     session: AsyncSession = Depends(get_session),
 ):
     """Per-group performance for a given lab."""
@@ -173,7 +175,6 @@ async def get_groups(
     
     task_ids = [task.id for task in tasks]
     
-    # Optimized JOIN query
     stmt = (
         select(
             Learner.student_group.label("group"),
